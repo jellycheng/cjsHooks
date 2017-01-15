@@ -1,13 +1,14 @@
 <?php
 namespace CjsHook;
 
-class Hooks {
+use ArrayAccess;
+class Hooks implements ArrayAccess {
 
     /**
      * 是否开启钩子
      * @var	bool
      */
-    protected $enabled = FALSE;
+    protected $enabled = false;
 
     /**
      * 配置的钩子
@@ -25,7 +26,7 @@ class Hooks {
      *
      * @var	bool
      */
-    protected $_in_progress = FALSE;
+    protected $_in_progress = false;
 
     public function __construct($hook=null)
     {
@@ -34,7 +35,7 @@ class Hooks {
             return;
         }
         $this->hooks = $hook;
-        $this->enabled = TRUE;
+        $this->enabled = true;
     }
 
     public static function create($hook=null)
@@ -46,7 +47,7 @@ class Hooks {
     {
         if ( ! $this->enabled || ! isset($this->hooks[$which]))
         {
-            return FALSE;
+            return false;
         }
 
         if (is_array($this->hooks[$which]) && ! isset($this->hooks[$which]['function']))
@@ -61,7 +62,7 @@ class Hooks {
             $this->_run_hook($this->hooks[$which]);
         }
 
-        return TRUE;
+        return true;
     }
 
     protected function _run_hook($data)
@@ -73,44 +74,36 @@ class Hooks {
                 ? $data[0]->{$data[1]}()
                 : $data();
 
-            return TRUE;
+            return true;
         }
         elseif ( ! is_array($data))
         {
-            return FALSE;
+            return false;
         }
 
-
-        if ($this->_in_progress === TRUE)
+        if ($this->_in_progress === true)
         {
-            return;
+            return false;
         }
 
-        if ( ! isset($data['filepath'], $data['filename']))
+        if (isset($data['filename']) && file_exists($data['filename']))
         {
-            return FALSE;
+            require_once($data['filename']);
         }
 
-        $filepath = $data['filepath'].'/'.$data['filename'];
-
-        if ( ! file_exists($filepath))
-        {
-            return FALSE;
-        }
-
-        $class		= empty($data['class']) ? FALSE : $data['class'];
-        $function	= empty($data['function']) ? FALSE : $data['function'];
+        $class		= empty($data['class']) ? false : $data['class'];
+        $function	= empty($data['function']) ? false : $data['function'];
         $params		= isset($data['params']) ? $data['params'] : '';
 
         if (empty($function))
         {
-            return FALSE;
+            return false;
         }
 
-        $this->_in_progress = TRUE;
+        $this->_in_progress = true;
 
-        if ($class !== FALSE)
-        {
+        if ($class !== false)
+        {//面向对象方式
             if (isset($this->_objects[$class]))
             {
                 if (method_exists($this->_objects[$class], $function))
@@ -119,36 +112,26 @@ class Hooks {
                 }
                 else
                 {
-                    return $this->_in_progress = FALSE;
+                    return $this->_in_progress = false;
                 }
-            }
-            else
-            {
-                class_exists($class, FALSE) || require_once($filepath);
-
-                if ( ! class_exists($class, FALSE) || ! method_exists($class, $function))
+            } else {
+                if ( ! class_exists($class, true) || ! method_exists($class, $function))
                 {
-                    return $this->_in_progress = FALSE;
+                    return $this->_in_progress = false;
                 }
-
                 $this->_objects[$class] = new $class();
                 $this->_objects[$class]->$function($params);
             }
-        }
-        else
-        {
-            function_exists($function) || require_once($filepath);
-
+        } else {//面向过程方式
             if ( ! function_exists($function))
             {
-                return $this->_in_progress = FALSE;
+                return $this->_in_progress = false;
             }
-
-            $function($params);
+            call_user_func($function, $params);
         }
 
-        $this->_in_progress = FALSE;
-        return TRUE;
+        $this->_in_progress = false;
+        return true;
     }
 
     /**
@@ -184,5 +167,45 @@ class Hooks {
         $this->hooks = $hooks;
         return $this;
     }
+
+    public function addHook($key, $val)
+    {
+        $this->offsetSet($key, $val);
+        return $this;
+    }
+
+    public function delHook($key)
+    {
+        $this->offsetUnset($key);
+        return $this;
+    }
+
+    public function offsetExists($offset)
+    {
+        return isset($this->hooks[$offset]);
+    }
+
+    public function offsetGet($offset)
+    {
+        return isset($this->hooks[$offset])?$this->hooks[$offset]:'';
+    }
+
+    public function offsetSet($offset, $value)
+    {
+        if (isset($this->hooks[$offset]))
+        {
+            $this->hooks[$offset][] = $value;
+        }
+        else
+        {
+            $this->hooks[$offset] = $value;
+        }
+    }
+
+    public function offsetUnset($offset)
+    {
+        unset($this->hooks[$offset]);
+    }
+
 
 }
